@@ -20,6 +20,7 @@ import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.google.api.core.ApiFuture;
+import com.google.api.gax.batching.BatchingSettings;
 import com.google.api.gax.batching.FlowControlSettings;
 import com.google.cloud.pubsub.v1.AckReplyConsumer;
 import com.google.cloud.pubsub.v1.MessageReceiver;
@@ -484,7 +485,18 @@ public class Prober {
 
   private void createPublisher() {
     try {
-      Publisher.Builder builder = Publisher.newBuilder(fullTopicName).setEndpoint(endpoint);
+        FlowControlSettings flowControlSettings =
+            FlowControlSettings.newBuilder()
+	    .setMaxOutstandingElementCount(10000L)
+	    .setMaxOutstandingRequestBytes(10000000L)
+                .build();	
+      BatchingSettings batchingSettings = BatchingSettings.newBuilder()
+	  .setElementCountThreshold(1L)
+	  .setRequestByteThreshold(1L)
+	  .setFlowControlSettings(flowControlSettings)
+          .build();
+      Publisher.Builder builder = Publisher.newBuilder(fullTopicName).setEndpoint(endpoint)
+	  .setBatchingSettings(batchingSettings);
       builder = updatePublisherBuilder(builder);
       publisher = builder.build();
       logger.log(Level.INFO, "Created Publisher");
