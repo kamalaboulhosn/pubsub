@@ -391,21 +391,6 @@ public class Prober {
     }
     logger.log(Level.INFO, "Starting probes");
     started = true;
-    // Cleanup old instances of topic and subscription if necessary.
-    if (cleanup()) {
-      // If we have deleted the old topic or subscriber, wait two minutes before creating new ones
-      // to give times for caches to get flushed. Otherwise, we run into situations where acks may
-      // not get processed right away or we could even try to pull from the old subscription.
-      try {
-        logger.log(Level.INFO, "Waiting 2 minutes before creating new topic and subscription.");
-        Thread.sleep(2 * 60 * 1000);
-      } catch (InterruptedException e) {
-        logger.log(
-            Level.WARNING, "Sleep before creating new topic and subscription interrupted.", e);
-      }
-    }
-    createTopic();
-    createSubscription();
     createPublisher();
     switch (subscriptionType) {
       case STREAMING_PULL:
