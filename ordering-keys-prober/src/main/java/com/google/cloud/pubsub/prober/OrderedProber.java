@@ -146,11 +146,11 @@ public class OrderedProber extends Prober {
       int publishGeneration = publishInfo.publishGeneration;
       PubsubMessage.Builder messageBuilder =
           message.toBuilder().setOrderingKey(Long.toString(lastOrderingKey));
-      if (!filteredOut) {
-        long nextSequenceNumber = ++publishInfo.lastPublishedSequenceNum;
-        messageBuilder.putAttributes(
-            ORDERING_KEY_SEQUENCE_NUMBER_KEY, Long.toString(nextSequenceNumber));
-      }
+      // if (!filteredOut) {
+      //   long nextSequenceNumber = ++publishInfo.lastPublishedSequenceNum;
+      //   messageBuilder.putAttributes(
+      //       ORDERING_KEY_SEQUENCE_NUMBER_KEY, Long.toString(nextSequenceNumber));
+      // }
       PubsubMessage messageToPublish = messageBuilder.build();
       ApiFuture<String> publishFuture = publisher.publish(messageToPublish);
       publishFuture.addListener(

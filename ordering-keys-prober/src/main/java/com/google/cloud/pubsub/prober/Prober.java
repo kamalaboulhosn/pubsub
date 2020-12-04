@@ -489,7 +489,7 @@ public class Prober {
             FlowControlSettings.newBuilder()
 	    .setMaxOutstandingElementCount(10000L)
 	    .setMaxOutstandingRequestBytes(10000000L)
-                .build();	
+                .build();
       BatchingSettings batchingSettings = BatchingSettings.newBuilder()
 	  .setElementCountThreshold(1L)
 	  .setRequestByteThreshold(1L)
@@ -674,9 +674,9 @@ public class Prober {
                 PubsubMessage builder =
                     PubsubMessage.newBuilder()
                         .setData(ByteString.copyFrom(bytes))
-                        .putAttributes(MESSAGE_SEQUENCE_NUMBER_KEY, messageSequenceNumber)
-                        .putAttributes(FILTERED_ATTRIBUTE, Boolean.toString(filteredOut))
-                        .putAttributes(INSTANCE_ATTRIBUTE, instanceId)
+                        // .putAttributes(MESSAGE_SEQUENCE_NUMBER_KEY, messageSequenceNumber)
+                        // .putAttributes(FILTERED_ATTRIBUTE, Boolean.toString(filteredOut))
+                        // .putAttributes(INSTANCE_ATTRIBUTE, instanceId)
                         .build();
                 if (!filteredOut) {
                   messageSendTime.put(messageSequenceNumber, sendTime);
