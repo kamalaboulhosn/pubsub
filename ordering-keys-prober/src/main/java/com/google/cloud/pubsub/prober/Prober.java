@@ -487,8 +487,8 @@ public class Prober {
     try {
         FlowControlSettings flowControlSettings =
             FlowControlSettings.newBuilder()
-	    .setMaxOutstandingElementCount(10000L)
-	    .setMaxOutstandingRequestBytes(10000000L)
+	    .setMaxOutstandingElementCount(2500L)
+	    .setMaxOutstandingRequestBytes(2500000L)
                 .build();
       BatchingSettings batchingSettings = BatchingSettings.newBuilder()
 	  .setElementCountThreshold(1L)
