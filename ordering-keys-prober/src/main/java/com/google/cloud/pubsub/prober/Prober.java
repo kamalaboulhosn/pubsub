@@ -228,7 +228,7 @@ public class Prober {
   private final TopicName fullTopicName;
   private final ProjectSubscriptionName fullSubscriptionName;
   private long publishedMessageCount;
-  private final ConcurrentMap<String, DateTime> messageSendTime = new ConcurrentHashMap<>();
+  // private final ConcurrentMap<String, DateTime> messageSendTime = new ConcurrentHashMap<>();
   private final List<ListenableScheduledFuture<?>> awaitingAckFutures = new ArrayList<>();
   private final String instanceId = UUID.randomUUID().toString();
   private AtomicLong publishCount = new AtomicLong();
@@ -311,43 +311,43 @@ public class Prober {
    * the end-to-end latency accurately.
    */
   protected boolean processMessage(PubsubMessage message, int subscriberIndex) {
-    DateTime receiveTime = DateTime.now();
-    String sequenceNum = message.getAttributes().get(MESSAGE_SEQUENCE_NUMBER_KEY);
-    DateTime sentTime = messageSendTime.remove(sequenceNum);
-    if (sentTime != null) {
-      Duration e2eLatency = new Duration(sentTime, receiveTime);
-      logger.fine(
-          "Received message "
-              + sequenceNum
-              + " with message ID "
-              + message.getMessageId()
-              + " on subscriber "
-              + subscriberIndex
-              + " in "
-              + e2eLatency.getMillis()
-              + "ms");
-    } else {
-      logger.fine(
-          "Received duplicate message on subscriber "
-              + subscriberIndex
-              + ": "
-              + message.getMessageId());
-    }
+    // DateTime receiveTime = DateTime.now();
+    // String sequenceNum = message.getAttributes().get(MESSAGE_SEQUENCE_NUMBER_KEY);
+    // DateTime sentTime = messageSendTime.remove(sequenceNum);
+    // if (sentTime != null) {
+    //   Duration e2eLatency = new Duration(sentTime, receiveTime);
+    //   logger.fine(
+    //       "Received message "
+    //           + sequenceNum
+    //           + " with message ID "
+    //           + message.getMessageId()
+    //           + " on subscriber "
+    //           + subscriberIndex
+    //           + " in "
+    //           + e2eLatency.getMillis()
+    //           + "ms");
+    // } else {
+    //   logger.fine(
+    //       "Received duplicate message on subscriber "
+    //           + subscriberIndex
+    //           + ": "
+    //           + message.getMessageId());
+    // }
 
-    String filterValue = message.getAttributes().get(FILTERED_ATTRIBUTE);
-    if (filterValue != null && filterValue.equals("true")) {
-      logger.log(
-          Level.WARNING,
-          "Received message with ID %s that should have been filtered out. "
-              + message.getMessageId(),
-          message);
-    }
+    // String filterValue = message.getAttributes().get(FILTERED_ATTRIBUTE);
+    // if (filterValue != null && filterValue.equals("true")) {
+    //   logger.log(
+    //       Level.WARNING,
+    //       "Received message with ID %s that should have been filtered out. "
+    //           + message.getMessageId(),
+    //       message);
+    // }
     long currentReceivedCount = receivedCount.incrementAndGet();
     if (currentReceivedCount % 1000 == 0) {
       logger.info(String.format("Received %d messages.", currentReceivedCount));
     }
 
-    return r.nextDouble() >= messageFailureProbability;
+    return true;//r.nextDouble() >= messageFailureProbability;
   }
 
   /**
@@ -678,9 +678,9 @@ public class Prober {
                         // .putAttributes(FILTERED_ATTRIBUTE, Boolean.toString(filteredOut))
                         // .putAttributes(INSTANCE_ATTRIBUTE, instanceId)
                         .build();
-                if (!filteredOut) {
-                  messageSendTime.put(messageSequenceNumber, sendTime);
-                }
+                // if (!filteredOut) {
+                //   messageSendTime.put(messageSequenceNumber, sendTime);
+                // }
                 ApiFuture<String> publishFuture = publish(publisher, builder, filteredOut);
                 publishFuture.addListener(
                     () -> {
@@ -698,7 +698,7 @@ public class Prober {
                         }
                       } catch (InterruptedException | ExecutionException e) {
                         logger.log(Level.WARNING, "Failed to publish", e);
-                        messageSendTime.remove(messageSequenceNumber);
+                        // messageSendTime.remove(messageSequenceNumber);
                       }
                     },
                     executor);
