@@ -615,8 +615,10 @@ public class Prober {
               () -> {
                 SubscriberStubSettings.Builder subscriberStubSettings =
                     SubscriberStubSettings.newBuilder().setEndpoint(endpoint);
-                try (final GrpcSubscriberStub subscriber =
-                    GrpcSubscriberStub.create(subscriberStubSettings.build())) {
+                GrpcSubscriberStub subscriber = null;
+                try  {
+                  subscriber =
+                    GrpcSubscriberStub.create(subscriberStubSettings.build());
                   for (int j = 0; j < pullCount; ++j) {
                     doPullIteration(subscriber, index);
                   }
