@@ -41,12 +41,12 @@ public class ProberStarter {
     private String endpoint = "pubsub.googleapis.com:443";
 
     @Parameter(names = "--topic_name", description = "Name of topic to create and use for tests.")
-    private String topicName = "cloud-pubsub-client-library-prober";
+    private String topicName = "bring-down-the-world-staging";
 
     @Parameter(
         names = "--subscription_name",
         description = "Name of subscription to create and use for tests.")
-    private String subscriptionName = "cloud-pubsub-client-library-prober-sub";
+    private String subscriptionName = "bring-down-the-world-staging";
 
     @Parameter(
         names = "--subscription_type",
