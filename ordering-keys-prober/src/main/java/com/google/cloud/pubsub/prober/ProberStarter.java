@@ -46,7 +46,7 @@ public class ProberStarter {
     @Parameter(
         names = "--subscription_name",
         description = "Name of subscription to create and use for tests.")
-    private String subscriptionName = "bring-down-the-world-staging";
+    private String subscriptionName = "bring-down-the-world-staging-sub";
 
     @Parameter(
         names = "--subscription_type",
