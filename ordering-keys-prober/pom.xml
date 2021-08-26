@@ -23,13 +23,18 @@
     <dependency>
       <groupId>com.google.cloud</groupId>
       <artifactId>google-cloud-pubsub</artifactId>
-      <version>1.113.4</version>
+      <version>1.114.2</version>
     </dependency>
     <!-- https://mvnrepository.com/artifact/joda-time/joda-time -->
     <dependency>
       <groupId>joda-time</groupId>
       <artifactId>joda-time</artifactId>
       <version>2.9.9</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.avro</groupId>
+      <artifactId>avro</artifactId>
+      <version>1.10.2</version>
     </dependency>
   </dependencies>
 <build>

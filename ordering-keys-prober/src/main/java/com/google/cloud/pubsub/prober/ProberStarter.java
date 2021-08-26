@@ -148,6 +148,12 @@ public class ProberStarter {
         description = "Whether or not to deliver messages in order.",
         arity = 1)
     private boolean orderedDelivery = true;
+
+    @Parameter(
+        names = "--message_multiplier",
+        description =
+            "Messages to publish per tick.")
+    private int messageMultiplier = 1;
   }
 
   private static final Logger logger = Logger.getLogger(Prober.class.getName());
@@ -185,7 +191,8 @@ public class ProberStarter {
         .setMessageSize(parsedArgs.messageSize)
         .setMessageFilteredProbability(parsedArgs.messageFilteredProbability)
         .setSubscriberMaxOutstandingMessageCount(parsedArgs.subscriberMaxOutstandingMessageCount)
-        .setSubscriberMaxOutstandingBytes(parsedArgs.subscriberMaxOutstandingBytes);
+        .setSubscriberMaxOutstandingBytes(parsedArgs.subscriberMaxOutstandingBytes)
+        .setMessageMultiplier(parsedArgs.messageMultiplier);
     Prober prober = builder.build();
     Future<?> loadFuture = Executors.newSingleThreadExecutor().submit(prober::start);
     try {

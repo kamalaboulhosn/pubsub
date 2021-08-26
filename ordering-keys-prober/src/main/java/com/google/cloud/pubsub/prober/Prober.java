@@ -33,6 +33,7 @@ import com.google.cloud.pubsub.v1.stub.GrpcSubscriberStub;
 import com.google.cloud.pubsub.v1.stub.SubscriberStubSettings;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableScheduledFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.protobuf.ByteString;
@@ -63,6 +64,15 @@ import java.util.logging.Logger;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
 
+import org.apache.avro.io.Encoder;
+import org.apache.avro.io.EncoderFactory;
+import google.example.AddressRecord;
+import google.example.Person;
+import java.io.ByteArrayOutputStream;
+import com.google.api.gax.batching.BatchingSettings;
+import com.google.api.gax.batching.FlowControlSettings;
+import com.google.api.gax.batching.FlowController.LimitExceededBehavior;
+
 /**
  * Manages a load test on a single topic and a single subscription with a configurable number of
  * subscriber clients. Tracks the latency of delivered messages as well as a count of duplicates.
@@ -91,6 +101,7 @@ public class Prober {
     int maxPullMessages = 100;
     int subscriberStreamCount = 1;
     int messageSize = 100;
+    int messageMultiplier = 1;
     double messageFilteredProbability = 0.0;
     long subscriberMaxOutstandingMessageCount = 10_000L;
     long subscriberMaxOutstandingBytes = 1_000_000_000L;
@@ -186,6 +197,11 @@ public class Prober {
       return this;
     }
 
+    public Builder setMessageMultiplier(int messageMultiplier) {
+      this.messageMultiplier = messageMultiplier;
+      return this;
+    }
+
     public Prober build() {
       return new Prober(this);
     }
@@ -214,6 +230,8 @@ public class Prober {
   private final double messageFilteredProbability;
   private final long subscriberMaxOutstandingMessageCount;
   private final long subscriberMaxOutstandingBytes;
+  private final int messageMultiplier;
+  private int personCount = 0;
 
   private final Random r;
   private ScheduledFuture<?> generatePublishesFuture;
@@ -227,13 +245,14 @@ public class Prober {
   private final TopicName fullTopicName;
   private final ProjectSubscriptionName fullSubscriptionName;
   private long publishedMessageCount;
-  private final ConcurrentMap<String, DateTime> messageSendTime = new ConcurrentHashMap<>();
+//   private final ConcurrentMap<String, DateTime> messageSendTime = new ConcurrentHashMap<>();
   private final List<ListenableScheduledFuture<?>> awaitingAckFutures = new ArrayList<>();
   private final String instanceId = UUID.randomUUID().toString();
   private AtomicLong publishCount = new AtomicLong();
   protected AtomicLong receivedCount = new AtomicLong();
 
-  protected final ListeningScheduledExecutorService executor;
+  protected final ListeningScheduledExecutorService scheduledExecutor;
+  protected final ListeningExecutorService executor;
 
   public static Builder newBuilder() {
     return new Builder();
@@ -244,6 +263,7 @@ public class Prober {
     this.subscriberMaxOutstandingMessageCount = builder.subscriberMaxOutstandingMessageCount;
     this.messageFilteredProbability = builder.messageFilteredProbability;
     this.messageSize = builder.messageSize;
+    this.messageMultiplier = builder.messageMultiplier;
     this.subscriberStreamCount = builder.subscriberStreamCount;
     this.maxPullMessages = builder.maxPullMessages;
     this.pullCount = builder.pullCount;
@@ -264,7 +284,8 @@ public class Prober {
     this.r = new Random();
     this.started = false;
     this.shutdown = false;
-    this.executor = MoreExecutors.listeningDecorator(Executors.newScheduledThreadPool(threadCount));
+    this.scheduledExecutor = MoreExecutors.listeningDecorator(Executors.newScheduledThreadPool(threadCount));
+    this.executor = MoreExecutors.listeningDecorator(Executors.	newCachedThreadPool());
 
     this.fullTopicName = TopicName.of(project, topicName);
     this.fullSubscriptionName = ProjectSubscriptionName.of(project, subscriptionName);
@@ -310,41 +331,41 @@ public class Prober {
    * the end-to-end latency accurately.
    */
   protected boolean processMessage(PubsubMessage message, int subscriberIndex) {
-    DateTime receiveTime = DateTime.now();
-    String sequenceNum = message.getAttributes().get(MESSAGE_SEQUENCE_NUMBER_KEY);
-    DateTime sentTime = messageSendTime.remove(sequenceNum);
-    if (sentTime != null) {
-      Duration e2eLatency = new Duration(sentTime, receiveTime);
-      logger.fine(
-          "Received message "
-              + sequenceNum
-              + " with message ID "
-              + message.getMessageId()
-              + " on subscriber "
-              + subscriberIndex
-              + " in "
-              + e2eLatency.getMillis()
-              + "ms");
-    } else {
-      logger.fine(
-          "Received duplicate message on subscriber "
-              + subscriberIndex
-              + ": "
-              + message.getMessageId());
-    }
+    // DateTime receiveTime = DateTime.now();
+    // String sequenceNum = message.getAttributes().get(MESSAGE_SEQUENCE_NUMBER_KEY);
+    // DateTime sentTime = messageSendTime.remove(sequenceNum);
+    // if (sentTime != null) {
+    //   Duration e2eLatency = new Duration(sentTime, receiveTime);
+    //   logger.fine(
+    //       "Received message "
+    //           + sequenceNum
+    //           + " with message ID "
+    //           + message.getMessageId()
+    //           + " on subscriber "
+    //           + subscriberIndex
+    //           + " in "
+    //           + e2eLatency.getMillis()
+    //           + "ms");
+    // } else {
+    //   logger.fine(
+    //       "Received duplicate message on subscriber "
+    //           + subscriberIndex
+    //           + ": "
+    //           + message.getMessageId());
+    // }
 
-    String filterValue = message.getAttributes().get(FILTERED_ATTRIBUTE);
-    if (filterValue != null && filterValue.equals("true")) {
-      logger.log(
-          Level.WARNING,
-          "Received message with ID %s that should have been filtered out. "
-              + message.getMessageId(),
-          message);
-    }
-    long currentReceivedCount = receivedCount.incrementAndGet();
-    if (currentReceivedCount % 1000 == 0) {
-      logger.info(String.format("Received %d messages.", currentReceivedCount));
-    }
+    // String filterValue = message.getAttributes().get(FILTERED_ATTRIBUTE);
+    // if (filterValue != null && filterValue.equals("true")) {
+    //   logger.log(
+    //       Level.WARNING,
+    //       "Received message with ID %s that should have been filtered out. "
+    //           + message.getMessageId(),
+    //       message);
+    // }
+    // long currentReceivedCount = receivedCount.incrementAndGet();
+    // if (currentReceivedCount % 1000 == 0) {
+    //   logger.info(String.format("Received %d messages.", currentReceivedCount));
+    // }
 
     return r.nextDouble() >= messageFailureProbability;
   }
@@ -370,6 +391,21 @@ public class Prober {
    * addition properties
    */
   protected Publisher.Builder updatePublisherBuilder(Publisher.Builder builder) {
+    FlowControlSettings flowControlSettings =
+          FlowControlSettings.newBuilder()
+              // Block more messages from being published when the limit is reached. The other
+              // options are Ignore (or continue publishing) and ThrowException (or error out).
+              .setLimitExceededBehavior(LimitExceededBehavior.Block)
+              .setMaxOutstandingRequestBytes(300 * 1024 * 1024L) // 300 MiB
+              .setMaxOutstandingElementCount(10_000L) // 100 messages
+              .build();
+    BatchingSettings batchingSettings =
+          BatchingSettings.newBuilder()
+              .setElementCountThreshold(1000L)
+              .setRequestByteThreshold(10_000_000L)
+              .setDelayThreshold(org.threeten.bp.Duration.ofMillis(10000))
+              .setFlowControlSettings(flowControlSettings)
+              .build();
     return builder;
   }
 
@@ -407,14 +443,14 @@ public class Prober {
     createTopic();
     createSubscription();
     createPublisher();
-    switch (subscriptionType) {
-      case STREAMING_PULL:
-        createStreamingPullSubscribers();
-        break;
-      case PULL:
-        createPullSubscribers();
-        break;
-    }
+    // switch (subscriptionType) {
+    //   case STREAMING_PULL:
+    //     createStreamingPullSubscribers();
+    //     break;
+    //   case PULL:
+    //     createPullSubscribers();
+    //     break;
+    // }
 
     generatePublishLoad();
   }
@@ -532,7 +568,7 @@ public class Prober {
                   ackNackMessage(ack, received, consumer);
                 } else {
                   awaitingAckFutures.add(
-                      executor.schedule(
+                      scheduledExecutor.schedule(
                           () -> ackNackMessage(ack, received, consumer),
                           ackDelayMilliseconds,
                           MILLISECONDS));
@@ -655,35 +691,54 @@ public class Prober {
 
   // Returns true if a topic or subscription was deleted.
   private boolean cleanup() {
-    boolean deleted = deleteSubscription(fullSubscriptionName);
-    deleted = deleted || deleteTopic(fullTopicName);
-    return deleted;
+    // boolean deleted = deleteSubscription(fullSubscriptionName);
+    // deleted = deleted || deleteTopic(fullTopicName);
+    // return deleted;
+    return false;
+  }
+
+  private ByteString getPerson() {
+    String[] firstNames = {"Homer", "Marge", "Bart", "Lisa", "Maggie"};
+    AddressRecord addr = AddressRecord.newBuilder().setCity("Springfield").setStreetNumber((int)Math.floor(Math.random()*1000.0)).setStreetName("Evergreen Terrace").setState("State").setCountry("USA").setZip("00111").build();
+    Person person = Person.newBuilder().setFirstName(firstNames[(int)Math.floor(Math.random()*5.0)]).setLastName("Simpson").setAge((int)Math.floor(Math.random()*50)).setAddress(addr).build();
+
+    ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+
+    try {
+      Encoder encoder = EncoderFactory.get().directBinaryEncoder(byteStream, /*reuse=*/ null);
+      //Encoder encoder = EncoderFactory.get().jsonEncoder(person.getSchema(), byteStream);
+
+      // Encode the object and write it to the output stream.
+      person.customEncode(encoder);
+      encoder.flush();
+    } catch (Exception e) {
+      logger.log(Level.WARNING, "Could not encode person", e);
+      return null;
+    }
+
+    return ByteString.copyFrom(byteStream.toByteArray());
   }
 
   private void generatePublishLoad() {
     logger.log(Level.INFO, "Beginning publishing");
     generatePublishesFuture =
-        executor.scheduleAtFixedRate(
+        scheduledExecutor.scheduleAtFixedRate(
             () -> {
               try {
                 DateTime sendTime = DateTime.now();
+                for (int i = 0; i < 2; ++i) {
                 String messageSequenceNumber = Long.toString(publishedMessageCount++);
                 boolean filteredOut = r.nextDouble() < messageFilteredProbability;
-                // The maximum message size allowed by the service is 10 MB.
-                int nextMessageSize =
-                    messageSize <= 0 ? max(1, (int) (10000000 * r.nextDouble())) : messageSize;
-                byte[] bytes = new byte[nextMessageSize];
-                r.nextBytes(bytes);
                 PubsubMessage builder =
                     PubsubMessage.newBuilder()
-                        .setData(ByteString.copyFrom(bytes))
+                        .setData(getPerson())
                         .putAttributes(MESSAGE_SEQUENCE_NUMBER_KEY, messageSequenceNumber)
                         .putAttributes(FILTERED_ATTRIBUTE, Boolean.toString(filteredOut))
                         .putAttributes(INSTANCE_ATTRIBUTE, instanceId)
                         .build();
-                if (!filteredOut) {
-                  messageSendTime.put(messageSequenceNumber, sendTime);
-                }
+                // if (!filteredOut) {
+                //   messageSendTime.put(messageSequenceNumber, sendTime);
+                // }
                 ApiFuture<String> publishFuture = publish(publisher, builder, filteredOut);
                 publishFuture.addListener(
                     () -> {
@@ -694,17 +749,18 @@ public class Prober {
                         logger.fine(
                             "Published " + messageId + " in " + publishLatency.getMillis() + "ms");
                         long currentPublishCount = publishCount.incrementAndGet();
-                        if (currentPublishCount % 1000 == 0) {
+                        if (currentPublishCount % 100000 == 0) {
                           logger.info(
                               String.format(
                                   "Successfully published %d messages.", currentPublishCount));
                         }
                       } catch (InterruptedException | ExecutionException e) {
                         logger.log(Level.WARNING, "Failed to publish", e);
-                        messageSendTime.remove(messageSequenceNumber);
+                        // messageSendTime.remove(messageSequenceNumber);
                       }
                     },
                     executor);
+                }
               } catch (RuntimeException e) {
                 logger.log(Level.WARNING, "Failed to publish", e);
               }
