@@ -1,0 +1,22 @@
+{
+  "type": "record",
+  "namespace": "google.example",
+  "name": "Person",
+  "fields": [
+    { "name": "first_name", "type": "string" },
+    { "name": "last_name", "type": "string" },
+    { "name": "age", "type": "int" },
+    { "name": "address", "type": {
+      "type": "record",
+      "name": "AddressRecord",
+      "fields": [
+        { "name": "street_number", "type": "int" },
+        { "name": "street_name", "type": "string" },
+        { "name": "city", "type": "string" },
+        { "name": "state", "type": "string" },
+        { "name": "country", "type": "string" },
+        { "name": "zip", "type": "string" }
+      ]
+    }}
+  ]
+}

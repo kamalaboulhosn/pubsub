@@ -80,6 +80,10 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import org.json.JSONObject;
 import org.json.JSONArray;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericDatumReader;
+import java.io.FileInputStream;
 
 // import com.google.cloud.bigquery.storage.v1beta2.AppendRowsResponse;
 // import com.google.cloud.bigquery.storage.v1beta2.BigQueryWriteClient;
@@ -286,6 +290,7 @@ public class Prober {
 
   BigQueryBatch currentBatch = null;
   Object batchLock = new Object();
+  org.apache.avro.Schema genericSchema;
 
 
   // private BigQueryWriteClient bqClient;
@@ -371,6 +376,14 @@ public class Prober {
       bqWriter = JsonStreamWriter.newBuilder(parentTable.toString(), schema).build();
     } catch (Exception e) {
       logger.log(Level.WARNING, "BQ client creation failed", e);
+    }
+
+    try {
+      org.apache.avro.Schema.Parser parser = new org.apache.avro.Schema.Parser();
+      FileInputStream schemaContent = new FileInputStream("person.avsc");
+      genericSchema = parser.parse(schemaContent);
+    } catch (Exception e) {
+      logger.log(Level.WARNING, "Schema creation failed", e);
     }
   }
 
@@ -625,15 +638,16 @@ public class Prober {
   }
 
   private void writeToBq(PubsubMessage message, AckReplyConsumer consumer){
-    SpecificDatumReader<Person> reader = new SpecificDatumReader<>(Person.getClassSchema());
+    GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(genericSchema);
     InputStream inputStream = new ByteArrayInputStream(message.getData().toByteArray());
     ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
     Decoder decoder = DecoderFactory.get().directBinaryDecoder(inputStream, /*reuse=*/ null);
     try {
-      Person person = reader.read(null, decoder);
-      Encoder encoder = EncoderFactory.get().jsonEncoder(person.getSchema(), byteStream);
+      GenericRecord person = reader.read(null, decoder);
+      Encoder encoder = EncoderFactory.get().jsonEncoder(genericSchema, byteStream);
       // Encode the object and write it to the output stream.
-      person.customEncode(encoder);
+      GenericDatumWriter<GenericRecord> writer = new GenericDatumWriter<>(genericSchema);
+      writer.write(person, encoder);
       encoder.flush();
       String jsonPerson = byteStream.toString("UTF-8");
       JSONObject jsonToWrite = new JSONObject(jsonPerson);
