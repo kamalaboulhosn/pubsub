@@ -73,6 +73,30 @@ import com.google.api.gax.batching.BatchingSettings;
 import com.google.api.gax.batching.FlowControlSettings;
 import com.google.api.gax.batching.FlowController.LimitExceededBehavior;
 
+import org.apache.avro.io.Decoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.specific.SpecificDatumReader;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import org.json.JSONObject;
+import org.json.JSONArray;
+
+// import com.google.cloud.bigquery.storage.v1beta2.AppendRowsResponse;
+// import com.google.cloud.bigquery.storage.v1beta2.BigQueryWriteClient;
+// import com.google.cloud.bigquery.storage.v1beta2.CreateWriteStreamRequest;
+// import com.google.cloud.bigquery.storage.v1beta2.JsonStreamWriter;
+// import com.google.cloud.bigquery.storage.v1beta2.TableName;
+// import com.google.cloud.bigquery.storage.v1beta2.WriteStream;
+
+import com.google.cloud.bigquery.BigQuery;
+import com.google.cloud.bigquery.BigQueryOptions;
+import com.google.cloud.bigquery.Schema;
+import com.google.cloud.bigquery.Table;
+import com.google.cloud.bigquery.storage.v1beta2.AppendRowsResponse;
+import com.google.cloud.bigquery.storage.v1beta2.JsonStreamWriter;
+import com.google.cloud.bigquery.storage.v1beta2.TableName;
+import com.google.cloud.bigquery.TableId;
+
 /**
  * Manages a load test on a single topic and a single subscription with a configurable number of
  * subscriber clients. Tracks the latency of delivered messages as well as a count of duplicates.
@@ -207,6 +231,11 @@ public class Prober {
     }
   }
 
+  static class BigQueryBatch {
+    ArrayList<AckReplyConsumer> ackers = new ArrayList<AckReplyConsumer>();
+    JSONArray rows = new JSONArray();
+  }
+
   private static final Logger logger = Logger.getLogger(Prober.class.getName());
   private static final String FILTERED_ATTRIBUTE = "filtered";
   private static final String INSTANCE_ATTRIBUTE = "instance";
@@ -249,10 +278,24 @@ public class Prober {
   private final List<ListenableScheduledFuture<?>> awaitingAckFutures = new ArrayList<>();
   private final String instanceId = UUID.randomUUID().toString();
   private AtomicLong publishCount = new AtomicLong();
+  private AtomicLong writeBqCount = new AtomicLong();
   protected AtomicLong receivedCount = new AtomicLong();
 
   protected final ListeningScheduledExecutorService scheduledExecutor;
   protected final ListeningExecutorService executor;
+
+  BigQueryBatch currentBatch = null;
+  Object batchLock = new Object();
+
+
+  // private BigQueryWriteClient bqClient;
+  // private WriteStream bqStream;
+  // private WriteStream bqWriteStream;
+  // private JsonStreamWriter bqWriter;
+
+  private BigQuery bqClient;
+  private JsonStreamWriter bqWriter;
+
 
   public static Builder newBuilder() {
     return new Builder();
@@ -301,6 +344,33 @@ public class Prober {
           SubscriptionAdminClient.create(subscriptionAdminClientBuilder.build());
     } catch (Exception e) {
       logger.log(Level.WARNING, "Admin client creation failed", e);
+    }
+
+    // try {
+    //   bqClient = BigQueryWriteClient.create();
+    //   bqStream = WriteStream.newBuilder().setType(WriteStream.Type.COMMITTED).build();
+    //   TableName parentTable = TableName.of(project, "cpstobq", "cps_to_bq");
+    //   CreateWriteStreamRequest createWriteStreamRequest =
+    //       CreateWriteStreamRequest.newBuilder()
+    //           .setParent(parentTable.toString())
+    //           .setWriteStream(bqStream)
+    //           .build();
+    //   bqWriteStream = bqClient.createWriteStream(createWriteStreamRequest);
+    //   JsonStreamWriter bqWriter =
+    //       JsonStreamWriter.newBuilder(bqWriteStream.getName(), bqWriteStream.getTableSchema()).build();
+    // } catch (Exception e) {
+    //   logger.log(Level.WARNING, "BQ client creation failed", e);
+    // }
+
+    try {
+      TableName parentTable = TableName.of(project, "cpstobq", "cps_to_bq");
+      TableId tableId = TableId.of(project, "cpstobq", "cps_to_bq");
+      bqClient = BigQueryOptions.getDefaultInstance().getService();
+      Table table = bqClient.getTable(tableId);
+      Schema schema = table.getDefinition().getSchema();
+      bqWriter = JsonStreamWriter.newBuilder(parentTable.toString(), schema).build();
+    } catch (Exception e) {
+      logger.log(Level.WARNING, "BQ client creation failed", e);
     }
   }
 
@@ -443,14 +513,14 @@ public class Prober {
     createTopic();
     createSubscription();
     createPublisher();
-    // switch (subscriptionType) {
-    //   case STREAMING_PULL:
-    //     createStreamingPullSubscribers();
-    //     break;
-    //   case PULL:
-    //     createPullSubscribers();
-    //     break;
-    // }
+    switch (subscriptionType) {
+      case STREAMING_PULL:
+        createStreamingPullSubscribers();
+        break;
+      case PULL:
+        createPullSubscribers();
+        break;
+    }
 
     generatePublishLoad();
   }
@@ -554,6 +624,64 @@ public class Prober {
     }
   }
 
+  private void writeToBq(PubsubMessage message, AckReplyConsumer consumer){
+    SpecificDatumReader<Person> reader = new SpecificDatumReader<>(Person.getClassSchema());
+    InputStream inputStream = new ByteArrayInputStream(message.getData().toByteArray());
+    ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+    Decoder decoder = DecoderFactory.get().directBinaryDecoder(inputStream, /*reuse=*/ null);
+    try {
+      Person person = reader.read(null, decoder);
+      Encoder encoder = EncoderFactory.get().jsonEncoder(person.getSchema(), byteStream);
+      // Encode the object and write it to the output stream.
+      person.customEncode(encoder);
+      encoder.flush();
+      String jsonPerson = byteStream.toString("UTF-8");
+      JSONObject jsonToWrite = new JSONObject(jsonPerson);
+
+      BigQueryBatch flushBatch = null;
+      synchronized (batchLock) {
+        if (currentBatch == null) {
+          currentBatch = new BigQueryBatch();
+        }
+        currentBatch.rows.put(jsonToWrite);
+        currentBatch.ackers.add(consumer);
+        if (currentBatch.ackers.size() == 1000) {
+          flushBatch = currentBatch;
+          currentBatch = null;
+        }
+      }
+
+      if (flushBatch != null) {
+        final BigQueryBatch finalFlushBatch = flushBatch;
+      ApiFuture<AppendRowsResponse> future = bqWriter.append(finalFlushBatch.rows);
+      future.addListener(
+                    () -> {
+                      try {
+                        future.get();
+                        long currentwriteBqCount = writeBqCount.addAndGet(finalFlushBatch.ackers.size());
+                        if (currentwriteBqCount % 10000 == 0) {
+                          logger.info(
+                              String.format(
+                                  "Successfully wrote %d messages to BQ.", currentwriteBqCount));
+                        }
+                        for (AckReplyConsumer acker : finalFlushBatch.ackers) {
+                          acker.ack();
+                        }
+                      } catch (InterruptedException | ExecutionException e) {
+                        logger.log(Level.WARNING, "Failed to write to BQ", e);
+                        for (AckReplyConsumer acker : finalFlushBatch.ackers) {
+                          acker.nack();
+                        }
+                      }
+                    },
+                    executor);
+      }
+    } catch (Exception e) {
+      logger.log(Level.WARNING, "Failed to write to bq", e);
+      consumer.nack();
+    }
+  }
+
   private void createStreamingPullSubscribers() {
     for (int i = 0; i < subscriberCount; ++i) {
       try {
@@ -562,17 +690,7 @@ public class Prober {
             new MessageReceiver() {
               @Override
               public void receiveMessage(PubsubMessage message, AckReplyConsumer consumer) {
-                DateTime received = DateTime.now();
-                boolean ack = checkAndProcessMessage(message, index);
-                if (ackDelayMilliseconds == 0) {
-                  ackNackMessage(ack, received, consumer);
-                } else {
-                  awaitingAckFutures.add(
-                      scheduledExecutor.schedule(
-                          () -> ackNackMessage(ack, received, consumer),
-                          ackDelayMilliseconds,
-                          MILLISECONDS));
-                }
+               writeToBq(message, consumer);
               }
             };
         FlowControlSettings flowControlSettings =
