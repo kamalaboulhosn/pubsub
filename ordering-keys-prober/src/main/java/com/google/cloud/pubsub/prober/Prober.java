@@ -726,6 +726,7 @@ public class Prober {
             () -> {
               try {
                 DateTime sendTime = DateTime.now();
+                for (int i = 0; i < messageMultiplier; ++i) {
                 String messageSequenceNumber = Long.toString(publishedMessageCount++);
                 boolean filteredOut = r.nextDouble() < messageFilteredProbability;
                 PubsubMessage builder =
@@ -738,7 +739,6 @@ public class Prober {
                 // if (!filteredOut) {
                 //   messageSendTime.put(messageSequenceNumber, sendTime);
                 // }
-                for (int i = 0; i < 2; ++i) {
                 ApiFuture<String> publishFuture = publish(publisher, builder, filteredOut);
                 publishFuture.addListener(
                     () -> {
