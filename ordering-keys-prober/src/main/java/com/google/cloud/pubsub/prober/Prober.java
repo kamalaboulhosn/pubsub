@@ -20,7 +20,10 @@ import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.google.api.core.ApiFuture;
+import com.google.api.core.ApiFutures;
 import com.google.api.gax.batching.FlowControlSettings;
+import com.google.api.gax.batching.BatchingSettings;
+import com.google.api.gax.batching.FlowController.LimitExceededBehavior;
 import com.google.cloud.pubsub.v1.AckReplyConsumer;
 import com.google.cloud.pubsub.v1.MessageReceiver;
 import com.google.cloud.pubsub.v1.Publisher;
@@ -94,6 +97,7 @@ public class Prober {
     double messageFilteredProbability = 0.0;
     long subscriberMaxOutstandingMessageCount = 10_000L;
     long subscriberMaxOutstandingBytes = 1_000_000_000L;
+    int publishMultiplier = 1;
 
     public Builder setProject(String project) {
       this.project = project;
@@ -186,6 +190,11 @@ public class Prober {
       return this;
     }
 
+    public Builder setPublishMultiplier(int publishMultiplier) {
+      this.publishMultiplier = publishMultiplier;
+      return this;
+    }
+
     public Prober build() {
       return new Prober(this);
     }
@@ -214,6 +223,7 @@ public class Prober {
   private final double messageFilteredProbability;
   private final long subscriberMaxOutstandingMessageCount;
   private final long subscriberMaxOutstandingBytes;
+  private final int publishMultiplier;
 
   private final Random r;
   private ScheduledFuture<?> generatePublishesFuture;
@@ -259,6 +269,7 @@ public class Prober {
     this.topicName = builder.topicName;
     this.endpoint = builder.endpoint;
     this.project = builder.project;
+    this.publishMultiplier = builder.publishMultiplier;
     subscribers = new Subscriber[subscriberCount];
     pullSubscriberFutures = new Future<?>[subscriberCount];
 
@@ -502,6 +513,23 @@ public class Prober {
     try {
       Publisher.Builder builder = Publisher.newBuilder(fullTopicName).setEndpoint(endpoint);
       builder = updatePublisherBuilder(builder);
+      FlowControlSettings flowControlSettings =
+          FlowControlSettings.newBuilder()
+              // Block more messages from being published when the limit is reached. The other
+              // options are Ignore (or continue publishing) and ThrowException (or error out).
+              .setLimitExceededBehavior(LimitExceededBehavior.Block)
+              .setMaxOutstandingRequestBytes(40 * 1024 * 1024L) // 40 MiB
+              .setMaxOutstandingElementCount(1000L) // 100 messages
+              .build();
+
+      // By default, messages are not batched.
+      BatchingSettings batchingSettings =
+          BatchingSettings.newBuilder()
+              .setElementCountThreshold(1000L)
+              .setRequestByteThreshold(10_000_000L)
+              .setDelayThreshold(org.threeten.bp.Duration.ofMillis(100))
+              .setFlowControlSettings(flowControlSettings)
+              .build();
       publisher = builder.build();
       logger.log(Level.INFO, "Created Publisher");
     } catch (Exception e) {
@@ -671,6 +699,8 @@ public class Prober {
             () -> {
               try {
                 DateTime sendTime = DateTime.now();
+                List<ApiFuture<String>> publishFutures = new ArrayList<ApiFuture<String>>();
+                for (int i = 0; i < publishMultiplier; ++i) {
                 String messageSequenceNumber = Long.toString(publishedMessageCount++);
                 boolean filteredOut = r.nextDouble() < messageFilteredProbability;
                 // The maximum message size allowed by the service is 10 MB.
@@ -685,28 +715,50 @@ public class Prober {
                         .putAttributes(FILTERED_ATTRIBUTE, Boolean.toString(filteredOut))
                         .putAttributes(INSTANCE_ATTRIBUTE, instanceId)
                         .build();
-                if (!filteredOut) {
-                  messageSendTime.put(messageSequenceNumber, sendTime);
+                // if (!filteredOut) {
+                //   messageSendTime.put(messageSequenceNumber, sendTime);
+                // }
+                publishFutures.add(publish(publisher, builder, filteredOut));
+                // ApiFuture<String> publishFuture = publish(publisher, builder, filteredOut);
+                // publishFuture.addListener(
+                //     () -> {
+                //       try {
+                //         DateTime publishAckTime = DateTime.now();
+                //         Duration publishLatency = new Duration(sendTime, publishAckTime);
+                //         String messageId = publishFuture.get();
+                //         logger.fine(
+                //             "Published " + messageId + " in " + publishLatency.getMillis() + "ms");
+                //         long currentPublishCount = publishCount.incrementAndGet();
+                //         if (currentPublishCount % 10000 == 0) {
+                //           logger.info(
+                //               String.format(
+                //                   "Successfully published %d messages.", currentPublishCount));
+                //         }
+                //       } catch (InterruptedException | ExecutionException e) {
+                //         logger.log(Level.WARNING, "Failed to publish", e);
+                //         messageSendTime.remove(messageSequenceNumber);
+                //       }
+                //     },
+                //     executor);
                 }
-                ApiFuture<String> publishFuture = publish(publisher, builder, filteredOut);
-                publishFuture.addListener(
+                ApiFuture<List<String>> allFutures = ApiFutures.allAsList(publishFutures);
+                allFutures.addListener(
                     () -> {
-                      try {
+                      //try {
                         DateTime publishAckTime = DateTime.now();
                         Duration publishLatency = new Duration(sendTime, publishAckTime);
-                        String messageId = publishFuture.get();
                         logger.fine(
-                            "Published " + messageId + " in " + publishLatency.getMillis() + "ms");
-                        long currentPublishCount = publishCount.incrementAndGet();
+                            "Published in " + publishLatency.getMillis() + "ms");
+                        long currentPublishCount = publishCount.addAndGet(publishMultiplier);
                         if (currentPublishCount % 1000 == 0) {
                           logger.info(
                               String.format(
                                   "Successfully published %d messages.", currentPublishCount));
                         }
-                      } catch (InterruptedException | ExecutionException e) {
-                        logger.log(Level.WARNING, "Failed to publish", e);
-                        messageSendTime.remove(messageSequenceNumber);
-                      }
+                      //} catch (InterruptedException | ExecutionException e) {
+                      //  logger.log(Level.WARNING, "Failed to publish", e);
+                        //messageSendTime.remove(messageSequenceNumber);
+                      //}
                     },
                     executor);
               } catch (RuntimeException e) {
