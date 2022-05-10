@@ -658,7 +658,7 @@ public class Prober {
   private void generatePublishLoad() {
     logger.log(Level.INFO, "Beginning publishing");
     generatePublishesFuture =
-        executor.scheduleAtFixedRate(
+        executor.scheduleWithFixedDelay(
             () -> {
               try {
                 List<ApiFuture<String>> publishFutures = new ArrayList<ApiFuture<String>>();
