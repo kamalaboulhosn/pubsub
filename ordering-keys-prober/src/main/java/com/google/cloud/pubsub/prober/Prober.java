@@ -238,7 +238,6 @@ public class Prober {
   private final TopicName fullTopicName;
   private final ProjectSubscriptionName fullSubscriptionName;
   private long publishedMessageCount;
-  private final ConcurrentMap<String, DateTime> messageSendTime = new ConcurrentHashMap<>();
   private final List<ListenableScheduledFuture<?>> awaitingAckFutures = new ArrayList<>();
   private final String instanceId = UUID.randomUUID().toString();
   private AtomicLong publishCount = new AtomicLong();
@@ -322,43 +321,7 @@ public class Prober {
    * the end-to-end latency accurately.
    */
   protected boolean processMessage(PubsubMessage message, int subscriberIndex) {
-    DateTime receiveTime = DateTime.now();
-    String sequenceNum = message.getAttributes().get(MESSAGE_SEQUENCE_NUMBER_KEY);
-    DateTime sentTime = messageSendTime.remove(sequenceNum);
-    if (sentTime != null) {
-      Duration e2eLatency = new Duration(sentTime, receiveTime);
-      logger.fine(
-          "Received message "
-              + sequenceNum
-              + " with message ID "
-              + message.getMessageId()
-              + " on subscriber "
-              + subscriberIndex
-              + " in "
-              + e2eLatency.getMillis()
-              + "ms");
-    } else {
-      logger.fine(
-          "Received duplicate message on subscriber "
-              + subscriberIndex
-              + ": "
-              + message.getMessageId());
-    }
-
-    String filterValue = message.getAttributes().get(FILTERED_ATTRIBUTE);
-    if (filterValue != null && filterValue.equals("true")) {
-      logger.log(
-          Level.WARNING,
-          "Received message with ID %s that should have been filtered out. "
-              + message.getMessageId(),
-          message);
-    }
-    long currentReceivedCount = receivedCount.incrementAndGet();
-    if (currentReceivedCount % 1000 == 0) {
-      logger.info(String.format("Received %d messages.", currentReceivedCount));
-    }
-
-    return r.nextDouble() >= messageFailureProbability;
+    return true;
   }
 
   /**
@@ -698,67 +661,57 @@ public class Prober {
         executor.scheduleAtFixedRate(
             () -> {
               try {
-                DateTime sendTime = DateTime.now();
                 List<ApiFuture<String>> publishFutures = new ArrayList<ApiFuture<String>>();
                 for (int i = 0; i < publishMultiplier; ++i) {
-                String messageSequenceNumber = Long.toString(publishedMessageCount++);
-                boolean filteredOut = r.nextDouble() < messageFilteredProbability;
-                // The maximum message size allowed by the service is 10 MB.
-                int nextMessageSize =
-                    messageSize <= 0 ? max(1, (int) (10000000 * r.nextDouble())) : messageSize;
-                byte[] bytes = new byte[nextMessageSize];
-                r.nextBytes(bytes);
-                PubsubMessage builder =
-                    PubsubMessage.newBuilder()
-                        .setData(ByteString.copyFrom(bytes))
-                        .putAttributes(MESSAGE_SEQUENCE_NUMBER_KEY, messageSequenceNumber)
-                        .putAttributes(FILTERED_ATTRIBUTE, Boolean.toString(filteredOut))
-                        .putAttributes(INSTANCE_ATTRIBUTE, instanceId)
-                        .build();
-                // if (!filteredOut) {
-                //   messageSendTime.put(messageSequenceNumber, sendTime);
-                // }
-                publishFutures.add(publish(publisher, builder, filteredOut));
-                // ApiFuture<String> publishFuture = publish(publisher, builder, filteredOut);
-                // publishFuture.addListener(
-                //     () -> {
-                //       try {
-                //         DateTime publishAckTime = DateTime.now();
-                //         Duration publishLatency = new Duration(sendTime, publishAckTime);
-                //         String messageId = publishFuture.get();
-                //         logger.fine(
-                //             "Published " + messageId + " in " + publishLatency.getMillis() + "ms");
-                //         long currentPublishCount = publishCount.incrementAndGet();
-                //         if (currentPublishCount % 10000 == 0) {
-                //           logger.info(
-                //               String.format(
-                //                   "Successfully published %d messages.", currentPublishCount));
-                //         }
-                //       } catch (InterruptedException | ExecutionException e) {
-                //         logger.log(Level.WARNING, "Failed to publish", e);
-                //         messageSendTime.remove(messageSequenceNumber);
-                //       }
-                //     },
-                //     executor);
+                  String messageSequenceNumber = Long.toString(publishedMessageCount++);
+                  // The maximum message size allowed by the service is 10 MB.
+                  int nextMessageSize =
+                      messageSize <= 0 ? max(1, (int) (10000000 * r.nextDouble())) : messageSize;
+                  byte[] bytes = new byte[nextMessageSize];
+                  r.nextBytes(bytes);
+                  PubsubMessage builder =
+                      PubsubMessage.newBuilder()
+                          .setData(ByteString.copyFrom(bytes))
+                          .putAttributes(MESSAGE_SEQUENCE_NUMBER_KEY, messageSequenceNumber)
+                          .putAttributes(INSTANCE_ATTRIBUTE, instanceId)
+                          .build();
+                  publishFutures.add(publish(publisher, builder, false));
+                  // ApiFuture<String> publishFuture = publish(publisher, builder, filteredOut);
+                  // publishFuture.addListener(
+                  //     () -> {
+                  //       try {
+                  //         DateTime publishAckTime = DateTime.now();
+                  //         Duration publishLatency = new Duration(sendTime, publishAckTime);
+                  //         String messageId = publishFuture.get();
+                  //         logger.fine(
+                  //             "Published " + messageId + " in " + publishLatency.getMillis() + "ms");
+                  //         long currentPublishCount = publishCount.incrementAndGet();
+                  //         if (currentPublishCount % 10000 == 0) {
+                  //           logger.info(
+                  //               String.format(
+                  //                   "Successfully published %d messages.", currentPublishCount));
+                  //         }
+                  //       } catch (InterruptedException | ExecutionException e) {
+                  //         logger.log(Level.WARNING, "Failed to publish", e);
+                  //         messageSendTime.remove(messageSequenceNumber);
+                  //       }
+                  //     },
+                  //     executor);
                 }
                 ApiFuture<List<String>> allFutures = ApiFutures.allAsList(publishFutures);
                 allFutures.addListener(
                     () -> {
-                      //try {
-                        DateTime publishAckTime = DateTime.now();
-                        Duration publishLatency = new Duration(sendTime, publishAckTime);
-                        logger.fine(
-                            "Published in " + publishLatency.getMillis() + "ms");
+                      try {
+                        allFutures.get();
                         long currentPublishCount = publishCount.addAndGet(publishMultiplier);
                         if (currentPublishCount % 1000 == 0) {
                           logger.info(
                               String.format(
                                   "Successfully published %d messages.", currentPublishCount));
                         }
-                      //} catch (InterruptedException | ExecutionException e) {
-                      //  logger.log(Level.WARNING, "Failed to publish", e);
-                        //messageSendTime.remove(messageSequenceNumber);
-                      //}
+                      } catch (InterruptedException | ExecutionException e) {
+                        logger.log(Level.WARNING, "Failed to publish", e);
+                      }
                     },
                     executor);
               } catch (RuntimeException e) {
