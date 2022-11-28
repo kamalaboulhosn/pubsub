@@ -65,6 +65,21 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.joda.time.DateTime;
 import org.joda.time.Duration;
+import ipc.pubsub2.schema.PersonOuterClass;
+import org.apache.avro.io.Encoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.specific.SpecificDatumWriter;
+import java.io.ByteArrayOutputStream;
+import com.google.protobuf.util.JsonFormat;
+import java.util.Arrays;
+import ipc.pubsub2.schema.Datetimemessage;
+import org.apache.avro.io.Decoder;
+import java.io.InputStream;
+import org.apache.avro.io.DecoderFactory;
+import java.io.ByteArrayInputStream;
+import org.apache.avro.specific.SpecificDatumReader;
+
+import java.util.Base64;
 
 /**
  * Manages a load test on a single topic and a single subscription with a configurable number of
@@ -660,22 +675,143 @@ public class Prober {
     generatePublishesFuture =
         executor.scheduleWithFixedDelay(
             () -> {
-              try {
+          try {
                 List<ApiFuture<String>> publishFutures = new ArrayList<ApiFuture<String>>();
                 for (int i = 0; i < publishMultiplier; ++i) {
                   String messageSequenceNumber = Long.toString(publishedMessageCount++);
                   // The maximum message size allowed by the service is 10 MB.
-                  int nextMessageSize =
-                      messageSize <= 0 ? max(1, (int) (10000000 * r.nextDouble())) : messageSize;
-                  byte[] bytes = new byte[nextMessageSize];
-                  r.nextBytes(bytes);
-                  PubsubMessage builder =
-                      PubsubMessage.newBuilder()
-                          .setData(ByteString.copyFrom(bytes))
-                          .putAttributes(MESSAGE_SEQUENCE_NUMBER_KEY, messageSequenceNumber)
-                          .putAttributes(INSTANCE_ATTRIBUTE, instanceId)
-                          .build();
-                  publishFutures.add(publish(publisher, builder, false));
+                  // int nextMessageSize =
+                  //     messageSize <= 0 ? max(1, (int) (10000000 * r.nextDouble())) : messageSize;
+                  // byte[] bytes = new byte[messageSize];
+                  // r.nextBytes(bytes);
+
+                  try {
+                  // PersonOuterClass.Person.Address a = PersonOuterClass.Person.Address.newBuilder().setStreetName("River Terrace").setStreetNumber(1010).setCity("New York").setState("PA").setZip("11701").setCountry("NZ").setExtraField("ABC").build();
+                  // PersonOuterClass.Person p = PersonOuterClass.Person.newBuilder().setFirstName("N").setLastName("O").setAge(30).setAddress(a).setAnotherExtraField("HA").build();
+                  // String jsonString = JsonFormat.printer().omittingInsignificantWhitespace().print(p);
+                  // byte[] bytes = p.toByteArray();
+
+                  // AddressRecord a = new AddressRecord();
+                  // a.setStreetNumber(500);
+                  // a.setStreetName("57th St.");
+                  // a.setCountry("USA");
+                  // a.setState("NY");
+                  // a.setCity("NYC");
+                  // a.setZip("10001");
+                  // a.setAnotherExtraField("XYZ");
+                  // Person p = new Person();
+                  // p.setAddress(a);
+                  // p.setFirstName("G");
+                  // p.setLastName("H");
+                  // p.setAge(10);
+                  // p.setExtraField("BBBBBB");
+
+                  // Datetimemessage.DateMessage dt = Datetimemessage.DateMessage.newBuilder().setTimestampf("2022-08-17 03:00:00").setDatef("2022-09-16").setTimef("20:00:03").build();
+                  // byte[] bytes = dt.toByteArray();
+
+                  Defaults.ExampleMessage em = Defaults.ExampleMessage.newBuilder().setDefaultstr("HI2").setDefaultbool(false).build();
+                  byte[] bytes = em.toByteArray();
+
+                  System.out.println(Base64.getEncoder().encodeToString(bytes));
+                  return;
+
+
+                  // SpecificDatumWriter<Person> w = new SpecificDatumWriter(Person.getClassSchema());
+                  // ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+                  // Encoder encoder = EncoderFactory.get().directBinaryEncoder(byteStream, /*reuse=*/ null);
+                  // w.write(p, encoder);
+                  // byte[] bytes = byteStream.toByteArray();
+
+                   //ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+                  //   java.nio.ByteBuffer byteBuffer;
+                  //  try {
+                  //   byteBuffer = p.toByteBuffer();
+                  //  } catch (Exception e) {
+                  //    logger.log(Level.INFO, "NO ENCODE ", e);
+                  //    return;
+                  //  }
+                  // byte[] bytes = byteBuffer.array();
+
+                  // Time testing
+                  // java.time.LocalDate now = java.time.LocalDate.now();
+                  // java.time.LocalDateTime timeNow = java.time.LocalDateTime.now();
+                 //  java.time.Instant instantNow = java.time.Instant.now();
+                  // java.time.LocalTime localTimeNow = java.time.LocalTime.now();
+                  // Message m = new Message();
+                  // m.setTimeMicrosField(instantNow);
+                  // m.setDateField(now);
+                  // m.setLocalTimestampMicrosField(timeNow);
+                  // m.setLocalTimestampMillisField(timeNow);
+                  // m.setTimeMicrosField(localTimeNow);
+                  // m.setTimeMillisField(localTimeNow);
+                  // m.setTimestampMicrosField(instantNow);
+                  // m.setTimestampMillisField(instantNow);
+
+                  // SpecificDatumWriter<Message> w = new SpecificDatumWriter(Message.getClassSchema());
+                  // ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+                  // Encoder encoder = EncoderFactory.get().directBinaryEncoder(byteStream, /*reuse=*/ null);
+                  // w.write(m, encoder);
+                  // byte[] bytes = byteStream.toByteArray();
+
+                  // java.nio.ByteBuffer byteBuffer;
+                  //  try {
+                  //    byteBuffer = m.toByteBuffer();
+                  //  } catch (Exception e) {
+                  //    logger.log(Level.INFO, "NO ENCODE ", e);
+                  //    return;
+                  //  }
+                  // byte[] bytes = byteBuffer.array();
+
+                  // EnumRecord r = new EnumRecord();
+                  // r.setStringField("HI");
+                  // r.setEnumField(Suit.DIAMONDS);
+                  // SpecificDatumWriter<EnumRecord> w = new SpecificDatumWriter(EnumRecord.getClassSchema());
+                  // ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+                  // Encoder encoder = EncoderFactory.get().directBinaryEncoder(byteStream, /*reuse=*/ null);
+                  // w.write(r, encoder);
+                  // byte[] bytes = byteStream.toByteArray();
+
+                  // String jsonString = "{\"string_field\": \"AGAIN\", \"enum_field\": \"HEARTS\"}";
+
+                  // LongRecord r = new LongRecord();
+                  // r.setLongField(34234252342340L);
+                  // SpecificDatumWriter<LongRecord> w = new SpecificDatumWriter(LongRecord.getClassSchema());
+                  // ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+                  // Encoder encoder = EncoderFactory.get().directBinaryEncoder(byteStream, /*reuse=*/ null);
+                  // w.write(r, encoder);
+                  // byte[] bytes = byteStream.toByteArray();
+
+                  // NullTest nt = new NullTest();
+                  // nt.setStrField("HI");
+                  // nt.setEnumField(Suit.SPADES);
+
+                  // AddressRecord ar = new AddressRecord();
+                  // ar.setStreetNumber(30);
+                  // nt.setRecordField(ar);
+
+                  // List<java.lang.CharSequence> strs = new ArrayList<java.lang.CharSequence>();
+                  // strs.add("ABC");
+
+                  // nt.setArrayField(strs);
+
+                  // ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+                  // Encoder encoder = EncoderFactory.get().jsonEncoder(NullTest.getClassSchema(), byteStream);
+                  // nt.customEncode(encoder);
+                  // encoder.flush();
+                  // System.out.println(byteStream.toString());
+
+                  // PubsubMessage builder =
+                  //     PubsubMessage.newBuilder()
+                  //         .setData(ByteString.copyFrom(bytes))
+                  //         //.setData(ByteString.copyFromUtf8(jsonString))
+                  //         .putAttributes(MESSAGE_SEQUENCE_NUMBER_KEY, messageSequenceNumber)
+                  //         .putAttributes(INSTANCE_ATTRIBUTE, instanceId)
+                  //         .build();
+                  // publishFutures.add(publish(publisher, builder, false));
+                  } catch (Exception e) {
+                     logger.log(Level.INFO, "NO ENCODE ", e);
+                     return;
+                   }
                   // ApiFuture<String> publishFuture = publish(publisher, builder, filteredOut);
                   // publishFuture.addListener(
                   //     () -> {
@@ -704,7 +840,7 @@ public class Prober {
                       try {
                         allFutures.get();
                         long currentPublishCount = publishCount.addAndGet(publishMultiplier);
-                        if (currentPublishCount % 1000 == 0) {
+                        if (currentPublishCount % 10 == 0) {
                           logger.info(
                               String.format(
                                   "Successfully published %d messages.", currentPublishCount));
@@ -714,7 +850,7 @@ public class Prober {
                       }
                     },
                     executor);
-              } catch (RuntimeException e) {
+              } catch (Exception e) {
                 logger.log(Level.WARNING, "Failed to publish", e);
               }
             },
