@@ -192,7 +192,8 @@ public class OrderedProber extends Prober {
 
   @Override
   protected boolean processMessage(PubsubMessage message, int subscriberIndex) {
-    boolean ack = super.processMessage(message, subscriberIndex);
+    return true;
+/*    boolean ack = super.processMessage(message, subscriberIndex);
 
     Integer orderingKey = null;
     try {
@@ -321,7 +322,7 @@ public class OrderedProber extends Prober {
       }
     }
 
-    return ack;
+    return ack;*/
   }
 
   // Checks to see if 'sequenceNum' already appears in delivered messages in 'recentDeliveries'

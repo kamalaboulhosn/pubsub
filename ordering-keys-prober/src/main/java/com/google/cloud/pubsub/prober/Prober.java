@@ -315,10 +315,10 @@ public class Prober {
    * that the message should be acked.
    */
   private boolean checkAndProcessMessage(PubsubMessage message, int subscriberIndex) {
-    String messageInstanceId = message.getAttributes().get(INSTANCE_ATTRIBUTE);
+    /*String messageInstanceId = message.getAttributes().get(INSTANCE_ATTRIBUTE);
     if (!instanceId.equals(messageInstanceId)) {
       return true;
-    }
+    }*/
     return processMessage(message, subscriberIndex);
   }
 
@@ -328,7 +328,8 @@ public class Prober {
    * the end-to-end latency accurately.
    */
   protected boolean processMessage(PubsubMessage message, int subscriberIndex) {
-    DateTime receiveTime = DateTime.now();
+    return true;
+    /*DateTime receiveTime = DateTime.now();
     String sequenceNum = message.getAttributes().get(MESSAGE_SEQUENCE_NUMBER_KEY);
     DateTime sentTime = messageSendTime.remove(sequenceNum);
     if (sentTime != null) {
@@ -364,7 +365,7 @@ public class Prober {
       logger.info(String.format("Received %d messages.", currentReceivedCount));
     }
 
-    return r.nextDouble() >= messageFailureProbability;
+    return r.nextDouble() >= messageFailureProbability;*/
   }
 
   /**
