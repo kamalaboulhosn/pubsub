@@ -436,6 +436,12 @@ public class Prober {
     }
 
     generatePublishLoad();
+
+    for (Subscriber s : subscribers) {
+      if (s != null) {
+        s.awaitTerminated();
+      }
+    }
   }
 
   /** Discontinue the load test. */
