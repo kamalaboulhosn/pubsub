@@ -40,7 +40,7 @@ public class ProberStarter {
     @Parameter(names = "--endpoint", description = "Cloud Pub/Sub endpoint to run against.")
     private String endpoint = "pubsub.googleapis.com:443";
 
-    @Parameter(names = "--should_cleanup", description ="Whether the prober should start by cleaning up the topic and subscription.")
+    @Parameter(names = "--should_cleanup", description ="Whether the prober should start by cleaning up the topic and subscription.", arity = 1)
     private boolean shouldCleanup = true;
 
     @Parameter(names = "--no_publish", description ="Whether the prober should skip publishing.")
